@@ -28,7 +28,7 @@ case `uname` in
 	exit -1
 esac
 
-GITREPO=${GITREPO:-"git://github.com/mozilla-b2g/b2g-manifest"}
+GITREPO=${GITREPO:-"git://github.com/adfad666/b2g-manifest"}
 BRANCH=${BRANCH:-master}
 
 GIT_TEMP_REPO="tmp_manifest_repo"
@@ -62,6 +62,12 @@ case "$1" in
 "optimus-l5")
 	echo DEVICE=m4 >> .tmp-config &&
 	repo_sync $1
+	;;
+
+"nexus-7")
+	echo DEVICE=grouper >> .tmp-config &&
+	repo_sync $1 &&
+	(cd device/asus/grouper && ./extract-files.sh)
 	;;
 
 "nexus-s")
@@ -102,6 +108,7 @@ case "$1" in
 	echo Valid devices to configure are:
 	echo - galaxy-s2
 	echo - galaxy-nexus
+	echo - nexus-7
 	echo - nexus-s
 	echo - nexus-s-4g
 	echo - otoro
