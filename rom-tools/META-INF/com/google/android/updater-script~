@@ -1,0 +1,81 @@
+set_progress(1.000000);
+
+# Device Check
+assert(getprop("ro.product.device") == "trout" || getprop("ro.build.product") == "trout" || getprop("ro.product.board") == "trout" ||
+       getprop("ro.product.device") == "sapphire" || getprop("ro.build.product") == "sapphire" || getprop("ro.product.board") == "sapphire");
+
+# Extract Files & Set Permissions
+package_extract_dir("META-INF/com/bin","/tmp/work");
+set_perm(0,0, 0777, "/tmp/work/mkbootimg");
+set_perm(0,0, 0777, "/tmp/work/unpackbootimg");
+set_perm(0,0, 0755, "/tmp/work/bootcmdutil");
+package_extract_file("nfo.prop", "/tmp/nfo.prop");
+package_extract_file("recovery.img","/tmp/work/recovery.img");
+
+# Get Device Info
+run_program("/sbin/sh","-c","(
+        baseband=`awk '{m=match($0,/androidboot.baseband=([0-9a-zA-Z\.]*)/) ; print(substr($0,RSTART+21,RLENGTH-21))}' < /proc/cmdline`
+        bootloader=`awk '{m=match($0,/androidboot.bootloader=([0-9a-zA-Z\.]*)/) ; print(substr($0,RSTART+23,RLENGTH-23))}' < /proc/cmdline`
+        radioseries=`echo $baseband | awk '{print(substr($0,0,4))}'`
+        custommtd=`awk '/mtdparts/ {print("CustomMTD")}' < /proc/cmdline`
+        smisize=`awk '{m=match($0,/smisize=([0-9a-zA-Z\.]*)/) ; print(substr($0,RSTART+8,RLENGTH-8))}' < /proc/cmdline`
+        board=`cat /proc/cpuinfo  | grep Hardware | awk '{print $3}'`
+        echo \"baseband=$baseband\" >> /tmp/nfo.prop
+        echo \"bootloader=$bootloader\" >> /tmp/nfo.prop
+        echo \"radioseries=$radioseries\" >> /tmp/nfo.prop
+        echo \"custommtd=$custommtd\" >> /tmp/nfo.prop
+        echo \"smisize=$smisize\" >> /tmp/nfo.prop
+        echo \"sysboard=$board\" >> /tmp/nfo.prop
+    )"
+);
+
+# Check Device and Get Proper Kernel Base
+if file_getprop("/tmp/nfo.prop","radioseries") == "3.22"
+then
+    ui_print("EBI1 Install");
+    package_extract_file("kernels/ebi1-zImage","/tmp/work/new-zImage");
+    run_program("/sbin/sh","-c",
+                "echo \"calc.base=19200000\">>/tmp/nfo.prop");
+else
+    ui_print("EBI0 Install");
+    package_extract_file("kernels/ebi0-zImage","/tmp/work/new-zImage");
+    run_program("/sbin/sh","-c",
+                "echo \"calc.base=10000000\">>/tmp/nfo.prop");
+endif;
+
+# Unpack Recovery Image and get Kernel cmdline
+run_program("/sbin/sh","-c","(
+        /tmp/work/unpackbootimg /tmp/work/recovery.img /tmp/work
+        echo \"calc.cmd=`cat /tmp/work/recovery.img-cmdline`\" >> /tmp/nfo.prop
+    )"
+);
+
+# Repack Recovery Image with the New Kernel Base
+run_program("/tmp/work/mkbootimg","--kernel","/tmp/work/new-zImage",
+                "--ramdisk","/tmp/work/recovery.img-ramdisk.gz",
+                "--cmdline",file_getprop("tmp/nfo.prop","calc.cmd"),
+                "--base",file_getprop("/tmp/nfo.prop","calc.base"),
+                "--output","/tmp/work/new-recovery.img");
+
+# Custom MTD
+	package_extract_file("united_cwm_recovery.img", "/tmp/work/recovery.img");
+	if run_program("/sbin/busybox","grep","-q","mtdparts","/proc/cmdline") == "0"
+	then
+	    #extract recovery's command line option (thanks to Firerat)
+	    run_program("/sbin/sh","-c",
+	        "echo mtdparts`cat /proc/cmdline|awk -Fmtdparts '{print $2}'` > /tmp/cmtd.prop"
+	        );
+	        
+	    ui_print("Applying cMTD to United Recovery");
+	    assert(run_program("/tmp/work/bootcmdutil","append","/tmp/recovery.img",
+	                concat("mtdparts=",file_getprop("/tmp/cmtd.prop","mtdparts"))
+	               ));
+    endif;
+
+# Flash Recovery Image
+assert(write_raw_image("/tmp/work/new-recovery.img","recovery"));
+
+# Delete Temporary Files
+delete_recursive("/tmp/work");
+ui_print("United Recovery");
+ui_print("Successfully Flashed!");
