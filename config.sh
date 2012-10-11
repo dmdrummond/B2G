@@ -64,10 +64,14 @@ case "$1" in
 	repo_sync $1
 	;;
 
+"optimus-one")
+	echo DEVICE=p500 >> .tmp-config &&
+	repo_sync $1
+	;;
+
 "nexus-7")
 	echo DEVICE=grouper >> .tmp-config &&
-	repo_sync $1 &&
-	(cd device/asus/grouper && ./extract-files.sh)
+	repo_sync $1
 	;;
 
 "nexus-s")
@@ -111,6 +115,7 @@ case "$1" in
 	echo - nexus-7
 	echo - nexus-s
 	echo - nexus-s-4g
+	echo - optimus-one
 	echo - otoro
 	echo - unagi
 	echo - pandaboard
